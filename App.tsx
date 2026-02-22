@@ -7,8 +7,13 @@ import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/Login';
 import Register from './pages/Register';
-import UserDashboard from './pages/UserDashboard';
-import AdminDashboard from './pages/AdminDashboard';
+import AppLayout from './src/layouts/AppLayout';
+import Dashboard from './src/pages/Dashboard';
+import ProcessList from './src/pages/Processes/ProcessList';
+import ProcessNew from './src/pages/Processes/ProcessNew';
+import ProcessDetails from './src/pages/Processes/ProcessDetails';
+import ClientList from './src/pages/Clients/ClientList';
+import Members from './src/pages/Settings/Members';
 import { User, UserRole, UserContext, userContextToLegacyUser, isAdmin } from './types';
 import { INITIAL_MOCK_USERS } from './constants';
 import { supabase } from './supabase';
@@ -124,11 +129,12 @@ const App: React.FC = () => {
     <HashRouter>
       <div className="min-h-screen bg-[#0f172a] text-white font-arial">
         <Routes>
+          {/* Auth routes - outside layout */}
           <Route 
             path="/login" 
             element={
               currentUser 
-                ? <Navigate to="/dashboard" /> 
+                ? <Navigate to="/dashboard" replace /> 
                 : <Login setCurrentUser={setCurrentUser} users={users} />
             } 
           />
@@ -136,33 +142,24 @@ const App: React.FC = () => {
             path="/register" 
             element={
               currentUser 
-                ? <Navigate to="/dashboard" /> 
+                ? <Navigate to="/dashboard" replace /> 
                 : <Register setUsers={setUsers} setCurrentUser={setCurrentUser} />
             } 
           />
-          <Route 
-            path="/dashboard" 
-            element={
-              currentUser ? (
-                isAdmin(currentUser) ? (
-                  <AdminDashboard 
-                    currentUser={currentUser} 
-                    users={users} 
-                    setUsers={setUsers} 
-                    onLogout={handleLogout} 
-                  />
-                ) : (
-                  <UserDashboard 
-                    currentUser={currentUser} 
-                    onLogout={handleLogout} 
-                  />
-                )
-              ) : (
-                <Navigate to="/login" />
-              )
-            } 
-          />
-          <Route path="*" element={<Navigate to="/login" />} />
+          
+          {/* App routes - inside layout */}
+          <Route element={<AppLayout isAuthenticated={!!currentUser} onLogout={handleLogout} />}>
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/processos" element={<ProcessList />} />
+            <Route path="/processos/novo" element={<ProcessNew />} />
+            <Route path="/processos/:id" element={<ProcessDetails />} />
+            <Route path="/clientes" element={<ClientList />} />
+            <Route path="/configuracoes/membros" element={<Members />} />
+          </Route>
+          
+          {/* Redirects */}
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </div>
     </HashRouter>
