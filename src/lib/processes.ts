@@ -38,59 +38,99 @@ export interface CreateProcessPayload {
 }
 
 /**
+ * Check if an error is a "relation does not exist" error
+ */
+function isTableNotFoundError(error: any): boolean {
+  const message = error?.message || error?.details || '';
+  return (
+    message.includes('relation') && message.includes('does not exist') ||
+    message.includes('42P01') || // PostgreSQL error code for undefined_table
+    error?.code === '42P01'
+  );
+}
+
+/**
  * List all processes for an organization
  */
 export async function listProcesses(org_id: string): Promise<Process[]> {
-  const { data, error } = await supabase
-    .from('processes')
-    .select('*')
-    .eq('org_id', org_id)
-    .order('created_at', { ascending: false });
+  try {
+    const { data, error } = await supabase
+      .from('processes')
+      .select('*')
+      .eq('org_id', org_id)
+      .order('created_at', { ascending: false });
 
-  if (error) {
-    console.error('Error listing processes:', error);
-    throw error;
+    if (error) {
+      console.error('Error listing processes:', error);
+      console.error('Error details:', JSON.stringify(error, null, 2));
+      
+      if (isTableNotFoundError(error)) {
+        console.warn('⚠️ Tabela "processes" não existe. Execute as migrações SQL primeiro.');
+      }
+      
+      return []; // Return empty array instead of throwing
+    }
+    
+    return data || [];
+  } catch (err) {
+    console.error('Unexpected error in listProcesses:', err);
+    return [];
   }
-  
-  return data || [];
 }
 
 /**
  * Get a single process by ID
  */
 export async function getProcessById(org_id: string, id: string): Promise<Process | null> {
-  const { data, error } = await supabase
-    .from('processes')
-    .select('*')
-    .eq('org_id', org_id)
-    .eq('id', id)
-    .single();
+  try {
+    const { data, error } = await supabase
+      .from('processes')
+      .select('*')
+      .eq('org_id', org_id)
+      .eq('id', id)
+      .single();
 
-  if (error) {
-    console.error('Error getting process:', error);
+    if (error) {
+      console.error('Error getting process:', error);
+      console.error('Error details:', JSON.stringify(error, null, 2));
+      return null;
+    }
+    
+    return data;
+  } catch (err) {
+    console.error('Unexpected error in getProcessById:', err);
     return null;
   }
-  
-  return data;
 }
 
 /**
  * List events for a process
  */
 export async function listProcessEvents(org_id: string, process_id: string): Promise<ProcessEvent[]> {
-  const { data, error } = await supabase
-    .from('process_events')
-    .select('*')
-    .eq('org_id', org_id)
-    .eq('process_id', process_id)
-    .order('created_at', { ascending: false });
+  try {
+    const { data, error } = await supabase
+      .from('process_events')
+      .select('*')
+      .eq('org_id', org_id)
+      .eq('process_id', process_id)
+      .order('created_at', { ascending: false });
 
-  if (error) {
-    console.error('Error listing process events:', error);
-    throw error;
+    if (error) {
+      console.error('Error listing process events:', error);
+      console.error('Error details:', JSON.stringify(error, null, 2));
+      
+      if (isTableNotFoundError(error)) {
+        console.warn('⚠️ Tabela "process_events" não existe. Execute as migrações SQL primeiro.');
+      }
+      
+      return [];
+    }
+    
+    return data || [];
+  } catch (err) {
+    console.error('Unexpected error in listProcessEvents:', err);
+    return [];
   }
-  
-  return data || [];
 }
 
 /**
@@ -118,6 +158,7 @@ export async function createProcess(
 
   if (processError || !process) {
     console.error('Error creating process:', processError);
+    console.error('Error details:', JSON.stringify(processError, null, 2));
     throw processError;
   }
 
@@ -162,6 +203,7 @@ export async function updateProcessStatus(
 
   if (processError || !process) {
     console.error('Error updating process status:', processError);
+    console.error('Error details:', JSON.stringify(processError, null, 2));
     throw processError;
   }
 
@@ -203,6 +245,7 @@ export async function addProcessEvent(
 
   if (error || !data) {
     console.error('Error adding process event:', error);
+    console.error('Error details:', JSON.stringify(error, null, 2));
     throw error;
   }
 
@@ -227,6 +270,7 @@ export async function updateProcess(
 
   if (error || !data) {
     console.error('Error updating process:', error);
+    console.error('Error details:', JSON.stringify(error, null, 2));
     throw error;
   }
 
@@ -245,6 +289,7 @@ export async function deleteProcess(org_id: string, process_id: string): Promise
 
   if (error) {
     console.error('Error deleting process:', error);
+    console.error('Error details:', JSON.stringify(error, null, 2));
     throw error;
   }
 }
@@ -253,29 +298,42 @@ export async function deleteProcess(org_id: string, process_id: string): Promise
  * Get process statistics for dashboard
  */
 export async function getProcessStats(org_id: string) {
-  const { data, error } = await supabase
-    .from('processes')
-    .select('status')
-    .eq('org_id', org_id);
+  const defaultStats = { total: 0, cadastro: 0, triagem: 0, analise: 0, concluido: 0 };
+  
+  try {
+    const { data, error } = await supabase
+      .from('processes')
+      .select('status')
+      .eq('org_id', org_id);
 
-  if (error) {
-    console.error('Error getting process stats:', error);
-    return { total: 0, cadastro: 0, triagem: 0, analise: 0, concluido: 0 };
-  }
-
-  const stats = {
-    total: data?.length || 0,
-    cadastro: 0,
-    triagem: 0,
-    analise: 0,
-    concluido: 0
-  };
-
-  data?.forEach((p) => {
-    if (p.status in stats) {
-      stats[p.status as keyof typeof stats]++;
+    if (error) {
+      console.error('Error getting process stats:', error);
+      console.error('Error details:', JSON.stringify(error, null, 2));
+      
+      if (isTableNotFoundError(error)) {
+        console.warn('⚠️ Tabela "processes" não existe. Execute as migrações SQL primeiro.');
+      }
+      
+      return defaultStats;
     }
-  });
 
-  return stats;
+    const stats = {
+      total: data?.length || 0,
+      cadastro: 0,
+      triagem: 0,
+      analise: 0,
+      concluido: 0
+    };
+
+    data?.forEach((p) => {
+      if (p.status in stats) {
+        stats[p.status as keyof typeof stats]++;
+      }
+    });
+
+    return stats;
+  } catch (err) {
+    console.error('Unexpected error in getProcessStats:', err);
+    return defaultStats;
+  }
 }

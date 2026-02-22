@@ -40,7 +40,12 @@ const ProcessList: React.FC = () => {
   }, [userContext?.org_id]);
 
   const loadProcesses = async () => {
-    if (!userContext?.org_id) return;
+    if (!userContext?.org_id) {
+      console.warn('No org_id in userContext, skipping process load');
+      setProcesses([]);
+      setLoading(false);
+      return;
+    }
     
     setLoading(true);
     setError('');
@@ -49,9 +54,9 @@ const ProcessList: React.FC = () => {
       setProcesses(data);
     } catch (err) {
       console.error('Error loading processes:', err);
-      setError('Erro ao carregar processos');
+      setError('Erro ao carregar processos. Verifique se as migrações foram executadas.');
     } finally {
-      setLoading(false);
+      setLoading(false); // ALWAYS set loading to false
     }
   };
 

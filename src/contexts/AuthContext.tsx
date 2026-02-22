@@ -21,6 +21,18 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 /**
+ * Check if an error is a "relation does not exist" error
+ */
+function isTableNotFoundError(error: any): boolean {
+  const message = error?.message || error?.details || '';
+  return (
+    message.includes('relation') && message.includes('does not exist') ||
+    message.includes('42P01') || // PostgreSQL error code for undefined_table
+    error?.code === '42P01'
+  );
+}
+
+/**
  * Fetch user context from v_user_context view
  */
 async function fetchUserContext(userId: string): Promise<{ context: UserContext | null; error: string | null }> {
@@ -34,6 +46,16 @@ async function fetchUserContext(userId: string): Promise<{ context: UserContext 
 
     if (error) {
       console.error('Error fetching user context:', error);
+      console.error('Error details:', JSON.stringify(error, null, 2));
+      
+      // Check if it's a "relation does not exist" error
+      if (isTableNotFoundError(error)) {
+        return { 
+          context: null, 
+          error: '⚠️ Banco de dados não configurado. Execute as migrações SQL primeiro.\n\nVeja PROCESSES_MODULE.md para instruções detalhadas.' 
+        };
+      }
+      
       return { 
         context: null, 
         error: 'Erro ao carregar contexto do usuário. Por favor, tente novamente.' 
