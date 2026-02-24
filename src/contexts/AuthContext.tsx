@@ -125,21 +125,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    // Get initial session
+    // Get initial session with timeout protection
     const initAuth = async () => {
       try {
         setLoading(true);
         setError(null);
         
-        const { data: { session: initialSession } } = await supabase.auth.getSession();
+        // Add timeout to prevent infinite loading
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Timeout: Conexão demorou muito')), 15000)
+        );
+        
+        const sessionPromise = supabase.auth.getSession();
+        
+        const { data: { session: initialSession } } = await Promise.race([
+          sessionPromise,
+          timeoutPromise
+        ]) as { data: { session: Session | null } };
+        
         setSession(initialSession);
         
         if (initialSession?.user?.id) {
           await loadContext(initialSession.user.id);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('Error initializing auth:', err);
-        setError('Erro ao inicializar autenticação. Por favor, recarregue a página.');
+        if (err?.message?.includes('Timeout')) {
+          setError('Tempo limite excedido. Verifique sua conexão e tente novamente.');
+        } else {
+          setError('Erro ao inicializar autenticação. Por favor, recarregue a página.');
+        }
       } finally {
         setLoading(false);
       }
