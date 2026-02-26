@@ -1,6 +1,8 @@
 /**
  * SGI FV - Dashboard Page
  * Main dashboard with real process statistics
+ * 
+ * DEBUG VERSION: Comprehensive logging enabled
  */
 
 import React, { useState, useEffect } from 'react';
@@ -10,7 +12,18 @@ import { useAuth } from '../contexts/AuthContext';
 import { getProcessStats, listProcesses, type Process } from '../lib/processes';
 import { checkMigrations, getMigrationStatusMessage, type MigrationStatus } from '../lib/checkMigrations';
 
+// Debug mode flag
+const DEBUG = true;
+const log = (...args: any[]) => {
+  if (DEBUG) console.log('[Dashboard]', new Date().toISOString(), ...args);
+};
+const logError = (...args: any[]) => {
+  console.error('[Dashboard ERROR]', new Date().toISOString(), ...args);
+};
+
 const Dashboard: React.FC = () => {
+  log('Dashboard component rendering');
+  
   const { userContext, isAdmin } = useAuth();
   const [stats, setStats] = useState({ total: 0, cadastro: 0, triagem: 0, analise: 0, concluido: 0 });
   const [recentProcesses, setRecentProcesses] = useState<Process[]>([]);
@@ -18,35 +31,74 @@ const Dashboard: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [migrationStatus, setMigrationStatus] = useState<MigrationStatus | null>(null);
 
+  log('Current state:', {
+    hasUserContext: !!userContext,
+    org_id: userContext?.org_id,
+    isAdmin,
+    loading,
+    error: !!error,
+    migrationStatus: migrationStatus?.allReady
+  });
+
   useEffect(() => {
+    log('useEffect[]: Component mounted, checking setup...');
     checkSetup();
+    
+    return () => {
+      log('Dashboard component unmounting');
+    };
   }, []);
 
   useEffect(() => {
+    log('useEffect[userContext, migrationStatus]: Triggered');
+    log('  - userContext?.org_id:', userContext?.org_id);
+    log('  - migrationStatus?.allReady:', migrationStatus?.allReady);
+    
     if (userContext?.org_id && migrationStatus?.allReady) {
+      log('Conditions met, calling loadData()');
       loadData();
+    } else {
+      log('Conditions not met for loadData()');
+      if (!userContext?.org_id) log('  - Missing org_id');
+      if (!migrationStatus?.allReady) log('  - Migrations not ready');
     }
   }, [userContext?.org_id, migrationStatus?.allReady]);
 
   const checkSetup = async () => {
+    const startTime = performance.now();
+    log('checkSetup() starting...');
+    
     try {
       const status = await checkMigrations();
+      const elapsed = performance.now() - startTime;
+      log(`checkMigrations() completed in ${elapsed.toFixed(2)}ms`);
+      log('Migration status:', JSON.stringify(status, null, 2));
+      
       setMigrationStatus(status);
       
       if (!status.allReady) {
         const message = getMigrationStatusMessage(status);
+        log('Migrations not ready, error message:', message);
         setError(message);
         setLoading(false);
+      } else {
+        log('All migrations ready');
       }
     } catch (err) {
-      console.error('Error checking setup:', err);
+      const elapsed = performance.now() - startTime;
+      logError(`Error checking setup after ${elapsed.toFixed(2)}ms:`, err);
+      logError('Error stack:', (err as Error)?.stack);
       setLoading(false);
     }
   };
 
   const loadData = async () => {
+    const startTime = performance.now();
+    log('loadData() starting...');
+    log('org_id:', userContext?.org_id);
+    
     if (!userContext?.org_id) {
-      console.warn('No org_id in userContext');
+      log('No org_id in userContext, returning early');
       setStats({ total: 0, cadastro: 0, triagem: 0, analise: 0, concluido: 0 });
       setLoading(false);
       return;
@@ -56,17 +108,40 @@ const Dashboard: React.FC = () => {
     setError(null);
     
     try {
+      log('Fetching stats and processes in parallel...');
+      
+      const statsStartTime = performance.now();
+      const processesStartTime = performance.now();
+      
       const [statsData, processesData] = await Promise.all([
-        getProcessStats(userContext.org_id),
-        listProcesses(userContext.org_id)
+        getProcessStats(userContext.org_id).then(data => {
+          const elapsed = performance.now() - statsStartTime;
+          log(`getProcessStats() completed in ${elapsed.toFixed(2)}ms:`, data);
+          return data;
+        }),
+        listProcesses(userContext.org_id).then(data => {
+          const elapsed = performance.now() - processesStartTime;
+          log(`listProcesses() completed in ${elapsed.toFixed(2)}ms, count:`, data.length);
+          return data;
+        })
       ]);
+      
+      const elapsed = performance.now() - startTime;
+      log(`All data loaded in ${elapsed.toFixed(2)}ms`);
+      
       setStats(statsData);
       setRecentProcesses(processesData.slice(0, 5));
+      
+      log('Stats set:', statsData);
+      log('Recent processes set:', processesData.slice(0, 5).length, 'items');
     } catch (err) {
-      console.error('Error loading dashboard data:', err);
+      const elapsed = performance.now() - startTime;
+      logError(`Error loading dashboard data after ${elapsed.toFixed(2)}ms:`, err);
+      logError('Error stack:', (err as Error)?.stack);
       setError('Erro ao carregar dados do dashboard. Verifique o console para mais detalhes.');
     } finally {
       setLoading(false);
+      log('loadData() finished, loading set to false');
     }
   };
 
@@ -80,8 +155,11 @@ const Dashboard: React.FC = () => {
     return new Date(dateStr).toLocaleDateString('pt-BR');
   };
 
+  log('Render decision:', { error: !!error, loading });
+
   // Show error UI if there's an error
   if (error) {
+    log('Rendering error UI');
     return (
       <div className="space-y-8">
         {/* Header */}
@@ -137,7 +215,10 @@ const Dashboard: React.FC = () => {
               </div>
               
               <button
-                onClick={() => window.location.reload()}
+                onClick={() => {
+                  log('User clicked "Verificar Novamente"');
+                  window.location.reload();
+                }}
                 className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors flex items-center gap-2"
               >
                 <RefreshCw className="w-4 h-4" />
@@ -150,6 +231,7 @@ const Dashboard: React.FC = () => {
     );
   }
 
+  log('Rendering main dashboard UI');
   return (
     <div className="space-y-8">
       {/* Header */}

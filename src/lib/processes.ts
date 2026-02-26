@@ -1,9 +1,20 @@
 /**
  * SGI FV - Processes API Module
  * Database operations for processes and events
+ * 
+ * DEBUG VERSION: Comprehensive logging enabled
  */
 
 import { supabase } from '../../supabase';
+
+// Debug mode flag
+const DEBUG = true;
+const log = (...args: any[]) => {
+  if (DEBUG) console.log('[Processes API]', new Date().toISOString(), ...args);
+};
+const logError = (...args: any[]) => {
+  console.error('[Processes API ERROR]', new Date().toISOString(), ...args);
+};
 
 export interface Process {
   id: string;
@@ -53,27 +64,39 @@ function isTableNotFoundError(error: any): boolean {
  * List all processes for an organization
  */
 export async function listProcesses(org_id: string): Promise<Process[]> {
+  const startTime = performance.now();
+  log('listProcesses() starting for org_id:', org_id);
+  
   try {
+    log('Executing query on processes table...');
     const { data, error } = await supabase
       .from('processes')
       .select('*')
       .eq('org_id', org_id)
       .order('created_at', { ascending: false });
 
+    const elapsed = performance.now() - startTime;
+    log(`Query completed in ${elapsed.toFixed(2)}ms`);
+
     if (error) {
-      console.error('Error listing processes:', error);
-      console.error('Error details:', JSON.stringify(error, null, 2));
+      logError('Error listing processes:', error);
+      logError('Error details:', JSON.stringify(error, null, 2));
+      logError('Error code:', error.code);
+      logError('Error message:', error.message);
       
       if (isTableNotFoundError(error)) {
-        console.warn('⚠️ Tabela "processes" não existe. Execute as migrações SQL primeiro.');
+        log('⚠️ Tabela "processes" não existe. Execute as migrações SQL primeiro.');
       }
       
       return []; // Return empty array instead of throwing
     }
     
+    log('Query successful, returned', data?.length || 0, 'processes');
     return data || [];
   } catch (err) {
-    console.error('Unexpected error in listProcesses:', err);
+    const elapsed = performance.now() - startTime;
+    logError(`Unexpected error in listProcesses after ${elapsed.toFixed(2)}ms:`, err);
+    logError('Error stack:', (err as Error)?.stack);
     return [];
   }
 }
@@ -82,7 +105,11 @@ export async function listProcesses(org_id: string): Promise<Process[]> {
  * Get a single process by ID
  */
 export async function getProcessById(org_id: string, id: string): Promise<Process | null> {
+  const startTime = performance.now();
+  log('getProcessById() starting for org_id:', org_id, 'id:', id);
+  
   try {
+    log('Executing query on processes table...');
     const { data, error } = await supabase
       .from('processes')
       .select('*')
@@ -90,15 +117,21 @@ export async function getProcessById(org_id: string, id: string): Promise<Proces
       .eq('id', id)
       .single();
 
+    const elapsed = performance.now() - startTime;
+    log(`Query completed in ${elapsed.toFixed(2)}ms`);
+
     if (error) {
-      console.error('Error getting process:', error);
-      console.error('Error details:', JSON.stringify(error, null, 2));
+      logError('Error getting process:', error);
+      logError('Error details:', JSON.stringify(error, null, 2));
       return null;
     }
     
+    log('Query successful, found process:', data?.id);
     return data;
   } catch (err) {
-    console.error('Unexpected error in getProcessById:', err);
+    const elapsed = performance.now() - startTime;
+    logError(`Unexpected error in getProcessById after ${elapsed.toFixed(2)}ms:`, err);
+    logError('Error stack:', (err as Error)?.stack);
     return null;
   }
 }
@@ -107,7 +140,11 @@ export async function getProcessById(org_id: string, id: string): Promise<Proces
  * List events for a process
  */
 export async function listProcessEvents(org_id: string, process_id: string): Promise<ProcessEvent[]> {
+  const startTime = performance.now();
+  log('listProcessEvents() starting for org_id:', org_id, 'process_id:', process_id);
+  
   try {
+    log('Executing query on process_events table...');
     const { data, error } = await supabase
       .from('process_events')
       .select('*')
@@ -115,20 +152,26 @@ export async function listProcessEvents(org_id: string, process_id: string): Pro
       .eq('process_id', process_id)
       .order('created_at', { ascending: false });
 
+    const elapsed = performance.now() - startTime;
+    log(`Query completed in ${elapsed.toFixed(2)}ms`);
+
     if (error) {
-      console.error('Error listing process events:', error);
-      console.error('Error details:', JSON.stringify(error, null, 2));
+      logError('Error listing process events:', error);
+      logError('Error details:', JSON.stringify(error, null, 2));
       
       if (isTableNotFoundError(error)) {
-        console.warn('⚠️ Tabela "process_events" não existe. Execute as migrações SQL primeiro.');
+        log('⚠️ Tabela "process_events" não existe. Execute as migrações SQL primeiro.');
       }
       
       return [];
     }
     
+    log('Query successful, returned', data?.length || 0, 'events');
     return data || [];
   } catch (err) {
-    console.error('Unexpected error in listProcessEvents:', err);
+    const elapsed = performance.now() - startTime;
+    logError(`Unexpected error in listProcessEvents after ${elapsed.toFixed(2)}ms:`, err);
+    logError('Error stack:', (err as Error)?.stack);
     return [];
   }
 }
@@ -141,7 +184,14 @@ export async function createProcess(
   payload: CreateProcessPayload,
   created_by: string
 ): Promise<Process> {
+  const startTime = performance.now();
+  log('createProcess() starting');
+  log('org_id:', org_id);
+  log('payload:', JSON.stringify(payload, null, 2));
+  log('created_by:', created_by);
+  
   // Create the process
+  log('Inserting process...');
   const { data: process, error: processError } = await supabase
     .from('processes')
     .insert({
@@ -156,13 +206,20 @@ export async function createProcess(
     .select()
     .single();
 
+  const insertElapsed = performance.now() - startTime;
+  log(`Process insert completed in ${insertElapsed.toFixed(2)}ms`);
+
   if (processError || !process) {
-    console.error('Error creating process:', processError);
-    console.error('Error details:', JSON.stringify(processError, null, 2));
+    logError('Error creating process:', processError);
+    logError('Error details:', JSON.stringify(processError, null, 2));
     throw processError;
   }
 
+  log('Process created successfully, id:', process.id);
+
   // Create the initial event
+  log('Creating initial event...');
+  const eventStartTime = performance.now();
   await supabase
     .from('process_events')
     .insert({
@@ -172,6 +229,12 @@ export async function createProcess(
       mensagem: `Processo "${payload.titulo}" criado com sucesso`,
       created_by
     });
+  
+  const eventElapsed = performance.now() - eventStartTime;
+  log(`Event insert completed in ${eventElapsed.toFixed(2)}ms`);
+
+  const totalElapsed = performance.now() - startTime;
+  log(`createProcess() completed in ${totalElapsed.toFixed(2)}ms`);
 
   return process;
 }
@@ -185,6 +248,10 @@ export async function updateProcessStatus(
   status: Process['status'],
   created_by: string
 ): Promise<Process> {
+  const startTime = performance.now();
+  log('updateProcessStatus() starting');
+  log('org_id:', org_id, 'process_id:', process_id, 'status:', status);
+  
   const statusLabels: Record<string, string> = {
     cadastro: 'Cadastro',
     triagem: 'Triagem',
@@ -193,6 +260,7 @@ export async function updateProcessStatus(
   };
 
   // Update the process
+  log('Updating process status...');
   const { data: process, error: processError } = await supabase
     .from('processes')
     .update({ status })
@@ -201,13 +269,19 @@ export async function updateProcessStatus(
     .select()
     .single();
 
+  const updateElapsed = performance.now() - startTime;
+  log(`Status update completed in ${updateElapsed.toFixed(2)}ms`);
+
   if (processError || !process) {
-    console.error('Error updating process status:', processError);
-    console.error('Error details:', JSON.stringify(processError, null, 2));
+    logError('Error updating process status:', processError);
+    logError('Error details:', JSON.stringify(processError, null, 2));
     throw processError;
   }
 
+  log('Status updated successfully');
+
   // Create status change event
+  log('Creating status change event...');
   await supabase
     .from('process_events')
     .insert({
@@ -217,6 +291,9 @@ export async function updateProcessStatus(
       mensagem: `Status alterado para: ${statusLabels[status]}`,
       created_by
     });
+
+  const totalElapsed = performance.now() - startTime;
+  log(`updateProcessStatus() completed in ${totalElapsed.toFixed(2)}ms`);
 
   return process;
 }
@@ -231,6 +308,10 @@ export async function addProcessEvent(
   mensagem: string,
   created_by: string
 ): Promise<ProcessEvent> {
+  const startTime = performance.now();
+  log('addProcessEvent() starting');
+  log('org_id:', org_id, 'process_id:', process_id, 'tipo:', tipo);
+  
   const { data, error } = await supabase
     .from('process_events')
     .insert({
@@ -243,12 +324,16 @@ export async function addProcessEvent(
     .select()
     .single();
 
+  const elapsed = performance.now() - startTime;
+  log(`addProcessEvent() completed in ${elapsed.toFixed(2)}ms`);
+
   if (error || !data) {
-    console.error('Error adding process event:', error);
-    console.error('Error details:', JSON.stringify(error, null, 2));
+    logError('Error adding process event:', error);
+    logError('Error details:', JSON.stringify(error, null, 2));
     throw error;
   }
 
+  log('Event added successfully, id:', data.id);
   return data;
 }
 
@@ -260,6 +345,11 @@ export async function updateProcess(
   process_id: string,
   updates: Partial<Pick<Process, 'titulo' | 'cliente_nome' | 'cliente_documento' | 'cliente_contato' | 'responsavel_user_id'>>
 ): Promise<Process> {
+  const startTime = performance.now();
+  log('updateProcess() starting');
+  log('org_id:', org_id, 'process_id:', process_id);
+  log('updates:', JSON.stringify(updates, null, 2));
+  
   const { data, error } = await supabase
     .from('processes')
     .update(updates)
@@ -268,12 +358,16 @@ export async function updateProcess(
     .select()
     .single();
 
+  const elapsed = performance.now() - startTime;
+  log(`updateProcess() completed in ${elapsed.toFixed(2)}ms`);
+
   if (error || !data) {
-    console.error('Error updating process:', error);
-    console.error('Error details:', JSON.stringify(error, null, 2));
+    logError('Error updating process:', error);
+    logError('Error details:', JSON.stringify(error, null, 2));
     throw error;
   }
 
+  log('Process updated successfully');
   return data;
 }
 
@@ -281,37 +375,53 @@ export async function updateProcess(
  * Delete a process
  */
 export async function deleteProcess(org_id: string, process_id: string): Promise<void> {
+  const startTime = performance.now();
+  log('deleteProcess() starting');
+  log('org_id:', org_id, 'process_id:', process_id);
+  
   const { error } = await supabase
     .from('processes')
     .delete()
     .eq('org_id', org_id)
     .eq('id', process_id);
 
+  const elapsed = performance.now() - startTime;
+  log(`deleteProcess() completed in ${elapsed.toFixed(2)}ms`);
+
   if (error) {
-    console.error('Error deleting process:', error);
-    console.error('Error details:', JSON.stringify(error, null, 2));
+    logError('Error deleting process:', error);
+    logError('Error details:', JSON.stringify(error, null, 2));
     throw error;
   }
+
+  log('Process deleted successfully');
 }
 
 /**
  * Get process statistics for dashboard
  */
 export async function getProcessStats(org_id: string) {
+  const startTime = performance.now();
+  log('getProcessStats() starting for org_id:', org_id);
+  
   const defaultStats = { total: 0, cadastro: 0, triagem: 0, analise: 0, concluido: 0 };
   
   try {
+    log('Executing query on processes table...');
     const { data, error } = await supabase
       .from('processes')
       .select('status')
       .eq('org_id', org_id);
 
+    const elapsed = performance.now() - startTime;
+    log(`Query completed in ${elapsed.toFixed(2)}ms`);
+
     if (error) {
-      console.error('Error getting process stats:', error);
-      console.error('Error details:', JSON.stringify(error, null, 2));
+      logError('Error getting process stats:', error);
+      logError('Error details:', JSON.stringify(error, null, 2));
       
       if (isTableNotFoundError(error)) {
-        console.warn('⚠️ Tabela "processes" não existe. Execute as migrações SQL primeiro.');
+        log('⚠️ Tabela "processes" não existe. Execute as migrações SQL primeiro.');
       }
       
       return defaultStats;
@@ -331,9 +441,12 @@ export async function getProcessStats(org_id: string) {
       }
     });
 
+    log('Stats calculated:', JSON.stringify(stats));
     return stats;
   } catch (err) {
-    console.error('Unexpected error in getProcessStats:', err);
+    const elapsed = performance.now() - startTime;
+    logError(`Unexpected error in getProcessStats after ${elapsed.toFixed(2)}ms:`, err);
+    logError('Error stack:', (err as Error)?.stack);
     return defaultStats;
   }
 }
