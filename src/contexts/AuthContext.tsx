@@ -5,10 +5,21 @@
  * DEBUG VERSION: Comprehensive logging enabled
  */
 
+console.log('[AuthContext] ========================================');
+console.log('[AuthContext] AuthContext.tsx module loading...', new Date().toISOString());
+console.log('[AuthContext] ========================================');
+
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+console.log('[AuthContext] ✅ React hooks imported');
 import { Session } from '@supabase/supabase-js';
+console.log('[AuthContext] ✅ Supabase Session type imported');
+
 import { supabase } from '../../supabase';
+console.log('[AuthContext] ✅ Supabase client imported');
+
 import type { UserContext, OrgRole } from '../../types';
+console.log('[AuthContext] ✅ Types imported');
+console.log('[AuthContext] All imports completed successfully!');
 
 // Debug mode flag - set to false in production
 const DEBUG = true;
