@@ -1,3 +1,7 @@
+/**
+ * SGI FV - Login Page
+ * Sistema de Gestão Integrada - Formando Valores
+ */
 
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -5,16 +9,12 @@ import { Eye, EyeOff, Mail, Lock } from 'lucide-react';
 import { ProcessStatus, ServiceUnit, User, UserRole } from '../types';
 import { isSupabaseConfigured, supabase } from '../supabase';
 
-interface LoginProps {
-  setCurrentUser: (user: User) => void;
-  users: User[];
-}
-
-const Login: React.FC<LoginProps> = ({ setCurrentUser, users }) => {
+const Login: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -110,6 +110,12 @@ const Login: React.FC<LoginProps> = ({ setCurrentUser, users }) => {
 
       setCurrentUser(normalizedUser);
       navigate('/dashboard');
+
+    } catch (err) {
+      console.error('Erro no login:', err);
+      setError('Erro inesperado. Tente novamente.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -135,6 +141,7 @@ const Login: React.FC<LoginProps> = ({ setCurrentUser, users }) => {
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full pl-10 pr-4 py-3 bg-gray-900 border border-slate-700 rounded-lg text-white font-bold placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 required
+                disabled={isLoading}
               />
             </div>
           </div>
@@ -150,6 +157,7 @@ const Login: React.FC<LoginProps> = ({ setCurrentUser, users }) => {
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full pl-10 pr-12 py-3 bg-gray-900 border border-slate-700 rounded-lg text-white font-bold placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 required
+                disabled={isLoading}
               />
               <button
                 type="button"
@@ -161,13 +169,26 @@ const Login: React.FC<LoginProps> = ({ setCurrentUser, users }) => {
             </div>
           </div>
 
-          {error && <p className="text-red-500 text-sm font-bold text-center">{error}</p>}
+          {error && (
+            <div className="flex items-center gap-2 p-3 bg-red-900/30 border border-red-800 rounded-lg">
+              <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
+              <p className="text-red-200 text-sm font-bold">{error}</p>
+            </div>
+          )}
 
           <button
             type="submit"
-            className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg uppercase tracking-widest transition-all transform active:scale-95 shadow-lg"
+            disabled={isLoading}
+            className="w-full py-4 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 disabled:cursor-not-allowed text-white font-bold rounded-lg uppercase tracking-widest transition-all transform active:scale-95 shadow-lg flex items-center justify-center gap-2"
           >
-            Autenticar no SGI
+            {isLoading ? (
+              <>
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                <span>Autenticando...</span>
+              </>
+            ) : (
+              'Autenticar no SGI'
+            )}
           </button>
         </form>
 
