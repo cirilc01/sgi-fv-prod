@@ -1,3 +1,7 @@
+/**
+ * SGI FV - Login Page
+ * Sistema de Gestão Integrada - Formando Valores
+ */
 
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -5,16 +9,12 @@ import { Eye, EyeOff, Mail, Lock } from 'lucide-react';
 import { ProcessStatus, ServiceUnit, User, UserRole } from '../types';
 import { isSupabaseConfigured, supabase } from '../supabase';
 
-interface LoginProps {
-  setCurrentUser: (user: User) => void;
-  users: User[];
-}
-
-const Login: React.FC<LoginProps> = ({ setCurrentUser, users }) => {
+const Login: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -26,100 +26,98 @@ const Login: React.FC<LoginProps> = ({ setCurrentUser, users }) => {
       return;
     }
 
-    try {
-      console.info('[login] iniciando autenticação', { email });
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+    console.info('[login] iniciando autenticação', { email });
+    const { data, error: authError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
 
-      if (authError) {
-        console.error('[login] falha na autenticação', authError);
-        setError('Email ou senha inválidos');
+    if (authError) {
+      console.error('[login] falha na autenticação', authError);
+      setError('Email ou senha inválidos');
+      return;
+    }
+
+    if (data.user) {
+      const userId = data.user.id;
+      console.info('[login] autenticado, buscando profile', { userId });
+
+      const { data: profiles, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (profileError) {
+        console.error('[login] erro ao buscar profile', profileError);
+        setError('Erro ao buscar perfil.');
         return;
       }
 
-      if (data.user) {
-        const userId = data.user.id;
-        console.info('[login] autenticado, buscando profile', { userId });
+      let profile = profiles;
 
-        const { data: profiles, error: profileError } = await supabase
+      if (!profile) {
+        const { data: inserted, error: insertError } = await supabase
           .from('profiles')
+          .insert([
+            {
+              id: userId,
+              email: data.user.email,
+              role: UserRole.CLIENT,
+              nome_completo: data.user.user_metadata?.name ?? null,
+            },
+          ])
           .select('*')
-          .eq('id', userId)
           .maybeSingle();
 
-        if (profileError) {
-          console.error('[login] erro ao buscar profile', profileError);
-          setError('Erro ao buscar perfil.');
+        if (insertError) {
+          console.error('[login] erro ao criar profile', insertError);
+          setError('Perfil não encontrado e não foi possível criar.');
           return;
         }
 
-        let profile = profiles;
-
-        if (!profile) {
-          const { data: inserted, error: insertError } = await supabase
-            .from('profiles')
-            .insert([
-              {
-                id: userId,
-                email: data.user.email,
-                role: UserRole.CLIENT,
-                nome_completo: data.user.user_metadata?.name ?? null,
-              },
-            ])
-            .select('*')
-            .maybeSingle();
-
-          if (insertError) {
-            console.error('[login] erro ao criar profile', insertError);
-            setError('Perfil não encontrado e não foi possível criar.');
-            return;
-          }
-
-          profile = inserted;
-        }
-
-        const existingUser = users.find((user) => user.id === userId || user.email === email);
-        const normalizedRole = profile?.role === UserRole.ADMIN ? UserRole.ADMIN : UserRole.CLIENT;
-
-        const normalizedUser: User = {
-          id: userId,
-          name: profile?.nome ?? profile?.nome_completo ?? existingUser?.name ?? data.user.email?.split('@')[0] ?? 'Usuário',
-          email: data.user.email ?? existingUser?.email ?? email,
-          role: normalizedRole,
-          documentId: existingUser?.documentId ?? '-',
-          taxId: existingUser?.taxId ?? '-',
-          address: existingUser?.address ?? '-',
-          maritalStatus: existingUser?.maritalStatus ?? 'Não informado',
-          country: existingUser?.country ?? 'Brasil',
-          phone: existingUser?.phone ?? '-',
-          processNumber: existingUser?.processNumber ?? '',
-          unit: existingUser?.unit ?? ServiceUnit.JURIDICO,
-          status: existingUser?.status ?? ProcessStatus.PENDENTE,
-          protocol: existingUser?.protocol ?? `JURA-${new Date().getFullYear()}-000`,
-          registrationDate: existingUser?.registrationDate ?? new Date().toLocaleString('pt-BR'),
-          notes: existingUser?.notes,
-          deadline: existingUser?.deadline,
-          serviceManager: existingUser?.serviceManager,
-        };
-
-        console.info('[login] profile carregado, redirecionando para dashboard', {
-          profileId: profile?.id,
-          role: normalizedUser.role,
-        });
-
-        setCurrentUser(normalizedUser);
-        navigate('/dashboard');
+        profile = inserted;
       }
+
+      const existingUser = users.find((user) => user.id === userId || user.email === email);
+      const normalizedRole = profile?.role === UserRole.ADMIN ? UserRole.ADMIN : UserRole.CLIENT;
+
+      const normalizedUser: User = {
+        id: userId,
+        name: profile?.nome ?? profile?.nome_completo ?? existingUser?.name ?? data.user.email?.split('@')[0] ?? 'Usuário',
+        email: data.user.email ?? existingUser?.email ?? email,
+        role: normalizedRole,
+        documentId: existingUser?.documentId ?? '-',
+        taxId: existingUser?.taxId ?? '-',
+        address: existingUser?.address ?? '-',
+        maritalStatus: existingUser?.maritalStatus ?? 'Não informado',
+        country: existingUser?.country ?? 'Brasil',
+        phone: existingUser?.phone ?? '-',
+        processNumber: existingUser?.processNumber ?? '',
+        unit: existingUser?.unit ?? ServiceUnit.JURIDICO,
+        status: existingUser?.status ?? ProcessStatus.PENDENTE,
+        protocol: existingUser?.protocol ?? `JURA-${new Date().getFullYear()}-000`,
+        registrationDate: existingUser?.registrationDate ?? new Date().toLocaleString('pt-BR'),
+        notes: existingUser?.notes,
+        deadline: existingUser?.deadline,
+        serviceManager: existingUser?.serviceManager,
+      };
+
+      console.info('[login] profile carregado, redirecionando para dashboard', {
+        profileId: profile?.id,
+        role: normalizedUser.role,
+      });
+
+      setCurrentUser(normalizedUser);
+      navigate('/dashboard');
+
     } catch (err) {
-      console.error('[login] erro inesperado', err);
+      console.error('Erro no login:', err);
       setError('Erro inesperado. Tente novamente.');
+    } finally {
+      setIsLoading(false);
     }
   };
-
-
-
 
 
 
@@ -143,6 +141,7 @@ const Login: React.FC<LoginProps> = ({ setCurrentUser, users }) => {
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full pl-10 pr-4 py-3 bg-gray-900 border border-slate-700 rounded-lg text-white font-bold placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 required
+                disabled={isLoading}
               />
             </div>
           </div>
@@ -158,6 +157,7 @@ const Login: React.FC<LoginProps> = ({ setCurrentUser, users }) => {
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full pl-10 pr-12 py-3 bg-gray-900 border border-slate-700 rounded-lg text-white font-bold placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 required
+                disabled={isLoading}
               />
               <button
                 type="button"
@@ -169,13 +169,26 @@ const Login: React.FC<LoginProps> = ({ setCurrentUser, users }) => {
             </div>
           </div>
 
-          {error && <p className="text-red-500 text-sm font-bold text-center">{error}</p>}
+          {error && (
+            <div className="flex items-center gap-2 p-3 bg-red-900/30 border border-red-800 rounded-lg">
+              <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
+              <p className="text-red-200 text-sm font-bold">{error}</p>
+            </div>
+          )}
 
           <button
             type="submit"
-            className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg uppercase tracking-widest transition-all transform active:scale-95 shadow-lg"
+            disabled={isLoading}
+            className="w-full py-4 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 disabled:cursor-not-allowed text-white font-bold rounded-lg uppercase tracking-widest transition-all transform active:scale-95 shadow-lg flex items-center justify-center gap-2"
           >
-            Autenticar no SGI
+            {isLoading ? (
+              <>
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                <span>Autenticando...</span>
+              </>
+            ) : (
+              'Autenticar no SGI'
+            )}
           </button>
         </form>
 

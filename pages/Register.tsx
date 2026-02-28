@@ -1,3 +1,7 @@
+/**
+ * SGI FV - Register Page
+ * Sistema de Gestão Integrada - Formando Valores
+ */
 
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -29,17 +33,18 @@ const Register: React.FC<RegisterProps> = ({ setUsers, setCurrentUser }) => {
   });
 
   const [error, setError] = useState('');
-
-  const validatePassword = (pass: string) => {
-    const hasMinLength = pass.length >= 8;
-    const hasUpper = /[A-Z]/.test(pass);
-    const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(pass);
-    const hasNumber = /[0-9]/.test(pass);
-    return hasMinLength && hasUpper && hasSpecial && hasNumber;
-  };
+  const [success, setSuccess] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const navigate = useNavigate();
 
   const handleRegister = async () => {
     setError('');
+    setIsLoading(true);
+
+    if (!isSupabaseConfigured) {
+      setError('Configuração do sistema incompleta. Contate o suporte para ajustar as variáveis do Supabase.');
+      return;
+    }
 
     if (!isSupabaseConfigured) {
       setError('Configuração do sistema incompleta. Contate o suporte para ajustar as variáveis do Supabase.');
@@ -56,91 +61,97 @@ const Register: React.FC<RegisterProps> = ({ setUsers, setCurrentUser }) => {
       return;
     }
 
-    try {
-      console.info('[register] iniciando cadastro', { email: formData.email });
+    console.info('[register] iniciando cadastro', { email: formData.email });
 
-      const { data, error: authError } = await supabase.auth.signUp({
-        email: formData.email,
-        password: formData.password,
-      });
+    const { data, error: authError } = await supabase.auth.signUp({
+      email: formData.email,
+      password: formData.password,
+    });
 
-      if (authError) {
-        console.error('[register] falha no cadastro', authError);
-        setError(authError.message);
+    if (authError) {
+      console.error('[register] falha no cadastro', authError);
+      setError(authError.message);
+      return;
+    }
+
+    if (data.user) {
+      // Criar registro na tabela "profiles" para manter consistência dos dados
+      const { error: profileInsertError } = await supabase
+        .from('profiles')
+        .insert([
+          {
+            id: data.user.id,
+            nome: formData.name,
+            email: formData.email,
+            role: UserRole.CLIENT,
+          },
+        ]);
+
+      if (profileInsertError) {
+        console.error('[register] erro ao criar profile', profileInsertError);
+        setError('Cadastro criado, mas houve falha ao criar perfil. Tente entrar novamente.');
         return;
       }
 
-      if (data.user) {
-        const { error: profileInsertError } = await supabase
-          .from('profiles')
-          .insert([
-            {
-              id: data.user.id,
-              nome: formData.name,
-              email: formData.email,
-              role: UserRole.CLIENT,
-            },
-          ]);
+      // Atualiza o estado local para que o login funcione corretamente com os dados extras
+      const prefix = formData.unit === ServiceUnit.JURIDICO ? 'JURA' : 
+                     formData.unit === ServiceUnit.ADMINISTRATIVO ? 'ADM' : 'TECAI';
+      const protocol = `${prefix}-2026-00${Math.floor(Math.random() * 900) + 100}`;
 
-        if (profileInsertError) {
-          console.error('[register] erro ao criar profile', profileInsertError);
-          setError('Cadastro criado, mas houve falha ao criar perfil. Tente entrar novamente.');
-          return;
-        }
+      const newUser: User = {
+        id: data.user.id,
+        name: formData.name,
+        email: formData.email,
+        password: formData.password,
+        role: UserRole.CLIENT,
+        documentId: formData.documentId,
+        taxId: formData.taxId,
+        address: formData.address,
+        maritalStatus: formData.maritalStatus,
+        country: formData.country,
+        phone: formData.phone,
+        processNumber: formData.processNumber,
+        unit: formData.unit,
+        status: ProcessStatus.PENDENTE,
+        protocol: protocol,
+        registrationDate: new Date().toLocaleString('pt-BR')
+      };
 
-        const prefix =
-          formData.unit === ServiceUnit.JURIDICO
-            ? 'JURA'
-            : formData.unit === ServiceUnit.ADMINISTRATIVO
-              ? 'ADM'
-              : 'TECAI';
-        const protocol = `${prefix}-2026-00${Math.floor(Math.random() * 900) + 100}`;
+      setUsers(prev => [...prev, newUser]);
+      
+      // Redirecionar para login após 2 segundos
+      setTimeout(() => {
+        navigate('/login');
+      }, 2000);
 
-        const newUser: User = {
-          id: data.user.id,
-          name: formData.name,
-          email: formData.email,
-          password: formData.password,
-          role: UserRole.CLIENT,
-          documentId: formData.documentId,
-          taxId: formData.taxId,
-          address: formData.address,
-          maritalStatus: formData.maritalStatus,
-          country: formData.country,
-          phone: formData.phone,
-          processNumber: formData.processNumber,
-          unit: formData.unit,
-          status: ProcessStatus.PENDENTE,
-          protocol,
-          registrationDate: new Date().toLocaleString('pt-BR'),
-        };
-
-        setUsers((prev) => [...prev, newUser]);
-        alert('Cadastro realizado com sucesso');
-        goToRoute('/login');
-      }
     } catch (err) {
-      console.error('[register] erro inesperado', err);
+      console.error('Erro no registro:', err);
       setError('Erro inesperado. Tente novamente.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const inputClass = "w-full p-3 bg-gray-900 border border-slate-700 rounded-lg text-white font-bold focus:ring-2 focus:ring-blue-500 outline-none";
+  if (success) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-gradient-to-b from-slate-900 to-slate-950">
+        <div className="w-full max-w-md bg-slate-800 p-8 rounded-2xl shadow-2xl border border-slate-700 text-center">
+          <div className="w-16 h-16 bg-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <CheckCircle2 className="w-8 h-8 text-white" />
+          </div>
+          <h2 className="text-xl font-bold text-white mb-2">Conta Criada!</h2>
+          <p className="text-slate-400">Redirecionando para o login...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-slate-950 p-4 md:p-8">
-      <div className="max-w-4xl mx-auto bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden">
-        {/* Banner LGPD */}
-        <div className="bg-blue-900/40 p-6 border-b border-blue-800/50 flex items-start gap-4">
-          <ShieldCheck className="text-blue-400 w-12 h-12 flex-shrink-0" />
-          <div>
-            <h3 className="font-bold text-blue-200 uppercase text-xs tracking-widest mb-1">Aviso de Privacidade & LGPD</h3>
-            <p className="text-blue-100/70 text-xs leading-relaxed">
-              As informações pessoais coletadas são asseguradas pelas normas da Lei Geral de Proteção de Dados (LGPD). 
-              A responsabilidade pela veracidade dos dados cadastrais na plataforma é exclusiva do usuário. 
-              Ao clicar em confirmar registro, você declara estar ciente de nossas políticas de uso e privacidade.
-            </p>
-          </div>
+    <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-gradient-to-b from-slate-900 to-slate-950">
+      <div className="w-full max-w-md bg-slate-800 p-8 rounded-2xl shadow-2xl border border-slate-700">
+        <div className="mb-8 text-center">
+          <h1 className="text-2xl font-bold tracking-wider text-white">SGI FV</h1>
+          <p className="text-slate-400 font-semibold uppercase text-xs mt-1">Criar Nova Conta</p>
         </div>
 
         <div className="p-8">
@@ -255,12 +266,16 @@ const Register: React.FC<RegisterProps> = ({ setUsers, setCurrentUser }) => {
                 className="w-full py-5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl uppercase tracking-widest transition-all shadow-xl flex items-center justify-center gap-3"
                 onClick={handleRegister}
               >
-                <CheckCircle2 className="w-6 h-6" /> Confirmar Registro
+                {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
               </button>
             </div>
           </div>
         </div>
       </div>
+      
+      <p className="mt-8 text-slate-600 text-[10px] uppercase tracking-tighter">
+        © 2026 SGI FV - Sistema de Gestão Integrada
+      </p>
     </div>
   );
 };
