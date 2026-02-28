@@ -13,61 +13,38 @@ import React from 'react';
 console.log('[APP] ✅ React imported');
 
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
-console.log('[APP] ✅ react-router-dom imported');
-
 import Login from './pages/Login';
 console.log('[APP] ✅ Login imported');
 
 import Register from './pages/Register';
 console.log('[APP] ✅ Register imported');
 
-import AppLayout from './src/layouts/AppLayout';
-console.log('[APP] ✅ AppLayout imported');
+const App: React.FC = () => {
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    const saved = localStorage.getItem('sgi_current_user');
+    return saved ? JSON.parse(saved) : null;
+  });
 
-import Dashboard from './src/pages/Dashboard';
-console.log('[APP] ✅ Dashboard imported');
+  const [users, setUsers] = useState<User[]>(() => {
+    const saved = localStorage.getItem('sgi_users');
+    return saved ? JSON.parse(saved) : INITIAL_MOCK_USERS;
+  });
 
-import ProcessList from './src/pages/Processes/ProcessList';
-console.log('[APP] ✅ ProcessList imported');
+  useEffect(() => {
+    localStorage.setItem('sgi_users', JSON.stringify(users));
+  }, [users]);
 
-import ProcessNew from './src/pages/Processes/ProcessNew';
-console.log('[APP] ✅ ProcessNew imported');
+  useEffect(() => {
+    if (currentUser) {
+      localStorage.setItem('sgi_current_user', JSON.stringify(currentUser));
+    } else {
+      localStorage.removeItem('sgi_current_user');
+    }
+  }, [currentUser]);
 
-import ProcessDetails from './src/pages/Processes/ProcessDetails';
-console.log('[APP] ✅ ProcessDetails imported');
-
-import ClientList from './src/pages/Clients/ClientList';
-console.log('[APP] ✅ ClientList imported');
-
-import Members from './src/pages/Settings/Members';
-console.log('[APP] ✅ Members imported');
-
-import Configuracoes from './src/pages/Configuracoes';
-console.log('[APP] ✅ Configuracoes imported');
-
-import { AuthProvider, useAuth } from './src/contexts/AuthContext';
-console.log('[APP] ✅ AuthProvider imported');
-
-console.log('[APP] All imports completed successfully!');
-
-// Protected Route wrapper
-const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  console.log('[ProtectedRoute] Rendering...');
-  const { session, loading } = useAuth();
-  console.log('[ProtectedRoute] Auth state:', { hasSession: !!session, loading });
-
-  if (loading) {
-    console.log('[ProtectedRoute] Showing loading state');
-    return (
-      <div className="min-h-screen bg-[#0f172a] text-white font-arial flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <p className="text-slate-400 text-sm uppercase tracking-widest">Carregando...</p>
-          <p className="text-slate-500 text-xs mt-2">Verificando autenticação...</p>
-        </div>
-      </div>
-    );
-  }
+  const handleLogout = () => {
+    setCurrentUser(null);
+  };
 
   if (!session) {
     console.log('[ProtectedRoute] No session, redirecting to login');

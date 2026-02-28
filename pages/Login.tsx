@@ -5,7 +5,8 @@
 
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Eye, EyeOff, Mail, Lock, AlertCircle } from 'lucide-react';
+import { Eye, EyeOff, Mail, Lock } from 'lucide-react';
+import { User } from '../types';
 import { supabase } from '../supabase';
 
 const Login: React.FC = () => {
@@ -19,29 +20,64 @@ const Login: React.FC = () => {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    setIsLoading(true);
 
-    try {
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+    console.info('[login] iniciando autenticação', { email });
+    const { data, error: authError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (authError) {
+      console.error('[login] falha na autenticação', authError);
+      setError('Email ou senha inválidos');
+      return;
+    }
+
+    if (data.user) {
+      const userId = data.user.id;
+      console.info('[login] autenticado, buscando profile', { userId });
+
+      const { data: profiles, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId);
+
+      if (profileError) {
+        console.error('[login] erro ao buscar profile', profileError);
+        setError('Erro ao buscar perfil.');
+        return;
+      }
+
+      let profile = profiles?.[0] ?? null;
+
+      if (!profile) {
+        const { data: inserted, error: insertError } = await supabase
+          .from('profiles')
+          .insert([
+            {
+              id: userId,
+              email: data.user.email,
+              role: 'user',
+              nome_completo: data.user.user_metadata?.name ?? null,
+            },
+          ])
+          .select('*');
+
+        if (insertError) {
+          console.error('[login] erro ao criar profile', insertError);
+          setError('Perfil não encontrado e não foi possível criar.');
+          return;
+        }
+
+        profile = inserted?.[0] ?? null;
+      }
+
+      console.info('[login] profile carregado, redirecionando para dashboard', {
+        profileId: profile?.id,
+        role: profile?.role,
       });
 
-      if (authError) {
-        if (authError.message.includes('Invalid login credentials')) {
-          setError('Email ou senha inválidos');
-        } else {
-          setError(authError.message);
-        }
-        return;
-      }
-
-      if (!data.user) {
-        setError('Erro ao autenticar. Tente novamente.');
-        return;
-      }
-
-      // Auth state change listener in AuthContext will handle the rest
+      setCurrentUser(profile as any);
       navigate('/dashboard');
 
     } catch (err) {

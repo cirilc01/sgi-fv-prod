@@ -4,16 +4,34 @@
  */
 
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Eye, EyeOff, Mail, Lock, User, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { ArrowLeft, CheckCircle2, ShieldCheck } from 'lucide-react';
+import { COUNTRIES } from '../constants';
+import { ServiceUnit, ProcessStatus, User, UserRole } from '../types';
 import { supabase } from '../supabase';
 
-const Register: React.FC = () => {
-  const [nome, setNome] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+interface RegisterProps {
+  setUsers: React.Dispatch<React.SetStateAction<User[]>>;
+  setCurrentUser: (user: User) => void;
+}
+
+const Register: React.FC<RegisterProps> = ({ setUsers, setCurrentUser }) => {
+  const navigate = useNavigate();
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    password: '',
+    confirmPassword: '',
+    documentId: '',
+    taxId: '',
+    address: '',
+    maritalStatus: 'Solteiro',
+    country: 'Brasil',
+    phone: '',
+    processNumber: '',
+    unit: ServiceUnit.JURIDICO
+  });
+
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -31,9 +49,21 @@ const Register: React.FC = () => {
       return;
     }
 
-    if (password.length < 6) {
-      setError('A senha deve ter pelo menos 6 caracteres');
-      setIsLoading(false);
+    if (!validatePassword(formData.password)) {
+      setError('A senha deve ter 8 caracteres, uma letra maiúscula, um caractere especial e um número.');
+      return;
+    }
+
+    console.info('[register] iniciando cadastro', { email: formData.email });
+
+    const { data, error: authError } = await supabase.auth.signUp({
+      email: formData.email,
+      password: formData.password,
+    });
+
+    if (authError) {
+      console.error('[register] falha no cadastro', authError);
+      setError(authError.message);
       return;
     }
 
