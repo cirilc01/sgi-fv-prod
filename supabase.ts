@@ -10,8 +10,8 @@ console.log('[SUPABASE] ========================================');
 import { createClient } from '@supabase/supabase-js'
 console.log('[SUPABASE] ✅ @supabase/supabase-js imported');
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+const fallbackSupabaseUrl = 'https://ktrrrqaqaljdcmxqdcff.supabase.co';
+const fallbackSupabaseAnonKey = 'sb_publishable_ZcEU2_K18A4NU43hO4zPmA_N5SkuqO_';
 
 console.log('[SUPABASE] Environment variables:', {
   VITE_SUPABASE_URL: supabaseUrl ? `${supabaseUrl.substring(0, 30)}...` : 'NOT SET',
