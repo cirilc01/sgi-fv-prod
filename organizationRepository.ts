@@ -14,6 +14,15 @@ const configuredTable = import.meta.env.VITE_SUPABASE_ORG_TABLE?.trim() || 'banc
 const candidateSchemas = Array.from(new Set([configuredSchema, 'public'].filter(Boolean))) as string[];
 const candidateNameColumns = ['nome', 'name', 'razao_social'];
 
+
+const slugify = (value: string) =>
+  value
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '') || 'organizacao';
+
 const toOrganization = (row: Record<string, unknown>): Organization | null => {
   const idValue = row.id;
 
@@ -71,44 +80,53 @@ export const createOrganization = async (organizationName: string) => {
 
   for (const schema of candidateSchemas) {
     for (const nameColumn of candidateNameColumns) {
-      const payload: Record<string, unknown> = { [nameColumn]: normalizedName };
+      const baseSlug = slugify(normalizedName);
+      const payloadVariants: Array<Record<string, unknown>> = [
+        { [nameColumn]: normalizedName, slug: `${baseSlug}-${Date.now()}` },
+        { [nameColumn]: normalizedName },
+      ];
 
-      const { data, error } = await supabase
-        .schema(schema)
-        .from(configuredTable)
-        .insert([payload])
-        .select('*')
-        .single();
+      for (const payload of payloadVariants) {
+        const { data, error } = await supabase
+          .schema(schema)
+          .from(configuredTable)
+          .insert([payload])
+          .select('*')
+          .single();
 
-      if (error) {
-        lastError = error;
+        if (error) {
+          lastError = error;
 
-        // Quando a coluna não existe no schema, tentamos a próxima coluna candidata.
-        if (error.code === 'PGRST204') {
-          continue;
-        }
+          // Quando a coluna não existe no schema (nome/slug), tentamos o próximo formato/coluna.
+          if (error.code === 'PGRST204') {
+            continue;
+          }
 
-        // Permissão negada (RLS/policy) deve ser retornada imediatamente.
-        if (error.code === '42501') {
+          // Permissão negada (RLS/policy) deve ser retornada imediatamente.
+          if (error.code === '42501') {
+            return { organization: null, resolvedSchema: schema, error };
+          }
+
+          // Para qualquer outro erro não relacionado à coluna, retornamos logo para não mascarar causa raiz.
           return { organization: null, resolvedSchema: schema, error };
         }
 
-        // Para qualquer outro erro não relacionado à coluna, retornamos logo para não mascarar causa raiz.
-        return { organization: null, resolvedSchema: schema, error };
+        const organization = toOrganization((data ?? {}) as Record<string, unknown>);
+
+        if (!organization) {
+          return {
+            organization: null,
+            resolvedSchema: schema,
+            error: { message: 'Registro criado, mas sem campo id.' },
+          };
+        }
+
+        return { organization, resolvedSchema: schema, error: null as PostgrestErrorLike | null };
       }
 
-      const organization = toOrganization((data ?? {}) as Record<string, unknown>);
-
-      if (!organization) {
-        return {
-          organization: null,
-          resolvedSchema: schema,
-          error: { message: 'Registro criado, mas sem campo id.' },
-        };
-      }
-
-      return { organization, resolvedSchema: schema, error: null as PostgrestErrorLike | null };
+      continue;
     }
+
   }
 
   return { organization: null, resolvedSchema: null, error: lastError };
@@ -129,6 +147,10 @@ export const buildOrganizationErrorMessage = (error: PostgrestErrorLike | null |
 
   if (error.code === 'PGRST204') {
     return 'A tabela de organizações foi encontrada, mas a coluna de nome esperada não existe. Verifique se há uma coluna nome/name.';
+  }
+
+  if (error.code === '23502') {
+    return 'A tabela exige campos obrigatórios adicionais (ex.: slug). Ajuste defaults no banco ou preencha esses campos no cadastro.';
   }
 
   return error.message ?? 'Erro inesperado ao processar organizações.';
