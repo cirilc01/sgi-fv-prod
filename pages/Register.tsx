@@ -5,6 +5,7 @@ import { ArrowLeft, CheckCircle2, ShieldCheck } from 'lucide-react';
 import { COUNTRIES } from '../constants';
 import { ServiceUnit, ProcessStatus, User, UserRole, Organization } from '../types';
 import { isSupabaseConfigured, supabase } from '../supabase';
+import { buildOrganizationErrorMessage, loadOrganizations } from '../organizationRepository';
 
 interface RegisterProps {
   setUsers: React.Dispatch<React.SetStateAction<User[]>>;
@@ -42,26 +43,19 @@ const Register: React.FC<RegisterProps> = ({ setUsers, setCurrentUser }) => {
 
 
   React.useEffect(() => {
-    const loadOrganizations = async () => {
-      const { data, error: orgError } = await supabase
-        .from('banco')
-        .select('id, nome, name, razao_social')
-        .order('nome', { ascending: true });
+    const fetchOrganizations = async () => {
+      const { organizations: loadedOrganizations, error } = await loadOrganizations();
 
-      if (orgError) {
-        console.warn('[register] erro ao carregar organizações', orgError);
+      if (error) {
+        console.warn('[register] erro ao carregar organizações', error);
+        setError(buildOrganizationErrorMessage(error));
         return;
       }
 
-      const normalizedOrganizations: Organization[] = (data ?? []).map((item: any) => ({
-        id: String(item.id),
-        name: item.nome ?? item.name ?? item.razao_social ?? `Organização ${item.id}`,
-      }));
-
-      setOrganizations(normalizedOrganizations);
+      setOrganizations(loadedOrganizations);
     };
 
-    loadOrganizations();
+    fetchOrganizations();
   }, []);
 
   const handleRegister = async () => {

@@ -4,7 +4,7 @@ import { LogOut, Printer, FileDown, Eye, Pencil, Search, Users, ShieldCheck, X, 
 import { User, ProcessStatus, UserRole, Hierarchy, ServiceUnit, Organization } from '../types';
 import { NavLink, useLocation } from 'react-router-dom';
 import { SERVICE_MANAGERS } from '../constants';
-import { supabase } from '../supabase';
+import { buildOrganizationErrorMessage, createOrganization, loadOrganizations } from '../organizationRepository';
 
 interface AdminDashboardProps {
   currentUser: User;
@@ -130,26 +130,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser, users, set
   };
 
   useEffect(() => {
-    const loadOrganizations = async () => {
-      const { data, error } = await supabase
-        .from('banco')
-        .select('id, nome, name, razao_social')
-        .order('nome', { ascending: true });
+    const fetchOrganizations = async () => {
+      const { organizations: loadedOrganizations, error } = await loadOrganizations();
 
       if (error) {
         console.warn('[organizacoes] erro ao carregar organizações', error);
+        setOrgError(buildOrganizationErrorMessage(error));
         return;
       }
 
-      const normalized = (data ?? []).map((row: any) => ({
-        id: String(row.id),
-        name: row.nome ?? row.name ?? row.razao_social ?? `Organização ${row.id}`,
-      }));
-
-      setOrganizations(normalized);
+      setOrgError('');
+      setOrganizations(loadedOrganizations);
     };
 
-    loadOrganizations();
+    fetchOrganizations();
   }, []);
 
   const handleCreateOrganization = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -161,24 +155,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser, users, set
       return;
     }
 
-    const { data, error } = await supabase
-      .from('banco')
-      .insert([{ nome: organizationName.trim() }])
-      .select('id, nome, name, razao_social')
-      .single();
+    const { organization, error } = await createOrganization(organizationName);
 
-    if (error) {
+    if (error || !organization) {
       console.error('[organizacoes] erro ao cadastrar organização', error);
-      setOrgError('Não foi possível cadastrar a organização.');
+      setOrgError(buildOrganizationErrorMessage(error));
       return;
     }
 
-    const createdOrganization: Organization = {
-      id: String(data.id),
-      name: data.nome ?? data.name ?? data.razao_social ?? organizationName.trim(),
-    };
-
-    setOrganizations((prev) => [...prev, createdOrganization]);
+    setOrganizations((prev) => [...prev, organization].sort((left, right) => left.name.localeCompare(right.name, 'pt-BR')));
     setOrganizationName('');
   };
 
