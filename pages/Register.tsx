@@ -67,61 +67,50 @@ const Register: React.FC<RegisterProps> = ({ setUsers, setCurrentUser }) => {
       return;
     }
 
-    try {
-      // 1. Criar usuário no Supabase Auth
-      const { data, error: authError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            name: nome
-          }
-        }
-      });
-
-      if (authError) {
-        if (authError.message.includes('already registered')) {
-          setError('Este email já está cadastrado');
-        } else {
-          setError(authError.message);
-        }
-        return;
-      }
-
-      if (!data.user) {
-        setError('Erro ao criar conta. Tente novamente.');
-        return;
-      }
-
-      // 2. Buscar organização padrão
-      const { data: defaultOrg } = await supabase
-        .from('organizations')
-        .select('id')
-        .eq('slug', 'default')
-        .single();
-
-      if (defaultOrg) {
-        // 3. Criar membership como client
-        await supabase
-          .from('org_members')
-          .insert({
-            org_id: defaultOrg.id,
-            user_id: data.user.id,
-            role: 'client'
-          });
-
-        // 4. Criar perfil
-        await supabase
-          .from('profiles')
-          .insert({
+    if (data.user) {
+      // Criar registro na tabela "profiles" para manter consistência dos dados
+      const { error: profileInsertError } = await supabase
+        .from('profiles')
+        .insert([
+          {
             id: data.user.id,
-            org_id: defaultOrg.id,
-            email: email,
-            nome_completo: nome
-          });
+            nome: formData.name,
+            email: formData.email,
+            role: UserRole.CLIENT,
+          },
+        ]);
+
+      if (profileInsertError) {
+        console.error('[register] erro ao criar profile', profileInsertError);
+        setError('Cadastro criado, mas houve falha ao criar perfil. Tente entrar novamente.');
+        return;
       }
 
-      setSuccess(true);
+      // Atualiza o estado local para que o login funcione corretamente com os dados extras
+      const prefix = formData.unit === ServiceUnit.JURIDICO ? 'JURA' : 
+                     formData.unit === ServiceUnit.ADMINISTRATIVO ? 'ADM' : 'TECAI';
+      const protocol = `${prefix}-2026-00${Math.floor(Math.random() * 900) + 100}`;
+
+      const newUser: User = {
+        id: data.user.id,
+        name: formData.name,
+        email: formData.email,
+        password: formData.password,
+        role: UserRole.CLIENT,
+        documentId: formData.documentId,
+        taxId: formData.taxId,
+        address: formData.address,
+        maritalStatus: formData.maritalStatus,
+        country: formData.country,
+        phone: formData.phone,
+        processNumber: formData.processNumber,
+        unit: formData.unit,
+        status: ProcessStatus.PENDENTE,
+        protocol: protocol,
+        registrationDate: new Date().toLocaleString('pt-BR')
+      };
+
+      setUsers(prev => [...prev, newUser]);
       
       // Redirecionar para login após 2 segundos
       setTimeout(() => {

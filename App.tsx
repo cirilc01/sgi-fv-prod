@@ -16,19 +16,30 @@ import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/Login';
 console.log('[APP] ✅ Login imported');
 
-import Register from './pages/Register';
-console.log('[APP] ✅ Register imported');
+const parseStorageItem = <T,>(key: string, fallback: T): T => {
+  const rawValue = localStorage.getItem(key);
+
+  if (!rawValue) {
+    return fallback;
+  }
+
+  try {
+    return JSON.parse(rawValue) as T;
+  } catch (error) {
+    console.error(`[storage] valor inválido para ${key}, limpando item`, error);
+    localStorage.removeItem(key);
+    return fallback;
+  }
+};
 
 const App: React.FC = () => {
-  const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    const saved = localStorage.getItem('sgi_current_user');
-    return saved ? JSON.parse(saved) : null;
-  });
+  const [currentUser, setCurrentUser] = useState<User | null>(() =>
+    parseStorageItem<User | null>('sgi_current_user', null)
+  );
 
-  const [users, setUsers] = useState<User[]>(() => {
-    const saved = localStorage.getItem('sgi_users');
-    return saved ? JSON.parse(saved) : INITIAL_MOCK_USERS;
-  });
+  const [users, setUsers] = useState<User[]>(() =>
+    parseStorageItem<User[]>('sgi_users', INITIAL_MOCK_USERS)
+  );
 
   useEffect(() => {
     localStorage.setItem('sgi_users', JSON.stringify(users));
