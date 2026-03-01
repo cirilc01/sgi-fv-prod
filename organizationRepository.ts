@@ -10,9 +10,12 @@ type PostgrestErrorLike = {
 
 const configuredSchema = import.meta.env.VITE_SUPABASE_ORG_SCHEMA?.trim();
 const configuredTable = import.meta.env.VITE_SUPABASE_ORG_TABLE?.trim() || 'banco';
+const configuredNameColumn = import.meta.env.VITE_SUPABASE_ORG_NAME_COLUMN?.trim();
 
 const candidateSchemas = Array.from(new Set([configuredSchema, 'public'].filter(Boolean))) as string[];
-const candidateNameColumns = ['nome', 'name', 'razao_social'];
+const candidateNameColumns = Array.from(
+  new Set([configuredNameColumn, 'name', 'nome', 'razao_social'].filter(Boolean))
+) as string[];
 
 
 const slugify = (value: string) =>
@@ -22,6 +25,19 @@ const slugify = (value: string) =>
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/(^-|-$)/g, '') || 'organizacao';
+
+
+const pickDate = (row: Record<string, unknown>, candidates: string[]) => {
+  for (const candidate of candidates) {
+    const value = row[candidate];
+
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value;
+    }
+  }
+
+  return undefined;
+};
 
 const toOrganization = (row: Record<string, unknown>): Organization | null => {
   const idValue = row.id;
@@ -37,6 +53,9 @@ const toOrganization = (row: Record<string, unknown>): Organization | null => {
   return {
     id: String(idValue),
     name: organizationName ?? `Organização ${idValue}`,
+    createdAt: pickDate(row, ['created_at', 'createdAt', 'inserted_at']),
+    subscriptionExpiresAt: pickDate(row, ['subscription_expires_at', 'expires_at', 'subscription_ends_at', 'expiresAt']),
+    slug: typeof row.slug === 'string' ? row.slug : undefined,
   };
 };
 
@@ -132,6 +151,54 @@ export const createOrganization = async (organizationName: string) => {
   return { organization: null, resolvedSchema: null, error: lastError };
 };
 
+
+
+export const deleteOrganization = async (organizationId: string) => {
+  if (!organizationId) {
+    return {
+      error: { message: 'ID da organização é obrigatório para excluir.' } as PostgrestErrorLike | null,
+      deleted: false,
+    };
+  }
+
+  for (const schema of candidateSchemas) {
+    const { data, error } = await supabase
+      .schema(schema)
+      .from(configuredTable)
+      .delete()
+      .eq('id', organizationId)
+      .select('id')
+      .limit(1);
+
+    if (!error) {
+      const deleted = Array.isArray(data) && data.length > 0;
+
+      if (!deleted) {
+        return {
+          error: {
+            code: 'NO_ROWS_DELETED',
+            message: 'A exclusão foi bloqueada por política do banco ou o registro não existe mais.',
+          } as PostgrestErrorLike,
+          deleted: false,
+        };
+      }
+
+      return { error: null as PostgrestErrorLike | null, deleted: true };
+    }
+
+    if (error.code === 'PGRST205') {
+      continue;
+    }
+
+    return { error, deleted: false };
+  }
+
+  return {
+    error: { message: 'Não foi possível excluir organização no schema configurado.' } as PostgrestErrorLike,
+    deleted: false,
+  };
+};
+
 export const buildOrganizationErrorMessage = (error: PostgrestErrorLike | null | undefined) => {
   if (!error) {
     return 'Não foi possível processar organizações.';
@@ -151,6 +218,10 @@ export const buildOrganizationErrorMessage = (error: PostgrestErrorLike | null |
 
   if (error.code === '23502') {
     return 'A tabela exige campos obrigatórios adicionais (ex.: slug). Ajuste defaults no banco ou preencha esses campos no cadastro.';
+  }
+
+  if (error.code === 'NO_ROWS_DELETED') {
+    return 'A organização não foi excluída no banco. Verifique as políticas RLS de DELETE da tabela organizations.';
   }
 
   return error.message ?? 'Erro inesperado ao processar organizações.';

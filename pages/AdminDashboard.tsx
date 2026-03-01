@@ -4,7 +4,7 @@ import { LogOut, Printer, FileDown, Eye, Pencil, Search, Users, ShieldCheck, X, 
 import { User, ProcessStatus, UserRole, Hierarchy, ServiceUnit, Organization } from '../types';
 import { NavLink, useLocation } from 'react-router-dom';
 import { SERVICE_MANAGERS } from '../constants';
-import { buildOrganizationErrorMessage, createOrganization, loadOrganizations } from '../organizationRepository';
+import { buildOrganizationErrorMessage, createOrganization, deleteOrganization, loadOrganizations } from '../organizationRepository';
 
 interface AdminDashboardProps {
   currentUser: User;
@@ -29,9 +29,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser, users, set
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [organizationName, setOrganizationName] = useState('');
   const [orgError, setOrgError] = useState('');
+  const [orgSuccess, setOrgSuccess] = useState('');
+  const [isCreatingOrganization, setIsCreatingOrganization] = useState(false);
+  const [organizationDeletingId, setOrganizationDeletingId] = useState<string | null>(null);
 
   const location = useLocation();
   const currentSection = section ?? (location.pathname.split('/')[2] as 'dashboard' | 'processos' | 'clientes' | 'configuracoes' | 'organizacoes') ?? 'dashboard';
+
+
+  const organizationScopedUsers = currentUser.organizationId
+    ? users.filter((user) => user.organizationId === currentUser.organizationId)
+    : users;
 
   const sidebarLinks = [
     { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -56,7 +64,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser, users, set
     }
   }, [currentSection]);
 
-  const filteredUsers = users.filter(u => 
+  const filteredUsers = organizationScopedUsers.filter(u => 
     u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     u.protocol.toLowerCase().includes(searchTerm.toLowerCase()) ||
     u.email.toLowerCase().includes(searchTerm.toLowerCase())
@@ -129,6 +137,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser, users, set
     window.print();
   };
 
+  const formatDateTime = (value?: string) => {
+    if (!value) {
+      return 'Não informado';
+    }
+
+    const parsedDate = new Date(value);
+
+    if (Number.isNaN(parsedDate.getTime())) {
+      return value;
+    }
+
+    return parsedDate.toLocaleString('pt-BR');
+  };
+
   useEffect(() => {
     const fetchOrganizations = async () => {
       const { organizations: loadedOrganizations, error } = await loadOrganizations();
@@ -149,13 +171,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser, users, set
   const handleCreateOrganization = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setOrgError('');
+    setOrgSuccess('');
 
     if (!organizationName.trim()) {
       setOrgError('Informe o nome da organização.');
       return;
     }
 
+    setIsCreatingOrganization(true);
+
     const { organization, error } = await createOrganization(organizationName);
+
+    setIsCreatingOrganization(false);
 
     if (error || !organization) {
       console.error('[organizacoes] erro ao cadastrar organização', error);
@@ -165,6 +192,43 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser, users, set
 
     setOrganizations((prev) => [...prev, organization].sort((left, right) => left.name.localeCompare(right.name, 'pt-BR')));
     setOrganizationName('');
+    setOrgSuccess('Organização cadastrada com sucesso.');
+  };
+
+
+  const isCentralOrganization = (organization: Organization) => {
+    const normalizedSlug = organization.slug?.toLowerCase();
+    const normalizedName = organization.name.toLowerCase();
+
+    return normalizedSlug === 'default' || normalizedName === 'organização padrão';
+  };
+
+  const handleDeleteOrganization = async (organization: Organization) => {
+    if (isCentralOrganization(organization)) {
+      setOrgError('A organização central (slug default) não pode ser excluída.');
+      setOrgSuccess('');
+      return;
+    }
+
+    if (!window.confirm('Deseja realmente excluir esta organização?')) {
+      return;
+    }
+
+    setOrgError('');
+    setOrgSuccess('');
+    setOrganizationDeletingId(organization.id);
+
+    const { error, deleted } = await deleteOrganization(organization.id);
+
+    setOrganizationDeletingId(null);
+
+    if (error || !deleted) {
+      setOrgError(buildOrganizationErrorMessage(error));
+      return;
+    }
+
+    setOrganizations((prev) => prev.filter((item) => item.id !== organization.id));
+    setOrgSuccess('Organização excluída com sucesso.');
   };
 
   return (
@@ -281,9 +345,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser, users, set
                   placeholder="Ex.: Organização Alpha"
                 />
               </div>
+              <div>
+                <label className="text-xs font-bold text-slate-400 mb-2 block">Expiração da assinatura (em breve)</label>
+                <input
+                  disabled
+                  value="Em breve: integração com pagamento"
+                  className="w-full p-3 bg-slate-800 border border-slate-700 rounded-lg text-slate-400 text-sm"
+                />
+              </div>
+              {isCreatingOrganization && <p className="text-sm text-blue-300 font-bold">Cadastrando organização...</p>}
               {orgError && <p className="text-sm text-red-400 font-bold">{orgError}</p>}
-              <button type="submit" className="px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 font-bold">
-                Salvar organização
+              {orgSuccess && <p className="text-sm text-emerald-400 font-bold">{orgSuccess}</p>}
+              <button type="submit" disabled={isCreatingOrganization} className="px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-400 font-bold">
+                {isCreatingOrganization ? 'Cadastrando...' : 'Salvar organização'}
               </button>
             </form>
           </div>
@@ -293,8 +367,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser, users, set
             <div className="space-y-3">
               {organizations.map((organization) => (
                 <div key={organization.id} className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                  <p className="font-bold">{organization.name}</p>
-                  <p className="text-xs text-slate-400">ID: {organization.id}</p>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-bold">{organization.name}</p>
+                      <p className="text-xs text-slate-400">Cadastro em: {formatDateTime(organization.createdAt)}</p>
+                      <p className="text-xs text-slate-500">Expiração da assinatura: {formatDateTime(organization.subscriptionExpiresAt)}</p>
+                      {isCentralOrganization(organization) && (
+                        <p className="text-[11px] text-amber-300 font-bold mt-1">Organização central protegida contra exclusão.</p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteOrganization(organization)}
+                      disabled={organizationDeletingId === organization.id || isCentralOrganization(organization)}
+                      className="p-2 rounded-lg bg-red-900/30 hover:bg-red-900/50 disabled:bg-slate-800 disabled:text-slate-500 text-red-300"
+                      title={isCentralOrganization(organization) ? 'Organização central não pode ser excluída' : 'Excluir organização'}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               ))}
               {organizations.length === 0 && (
@@ -309,7 +400,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser, users, set
           <h3 className="text-lg font-black mb-4">PROCESSOS</h3>
           <p className="text-slate-400 text-sm mb-4">Visão rápida dos processos cadastrados.</p>
           <div className="space-y-3">
-            {users.map((user) => (
+            {organizationScopedUsers.map((user) => (
               <div key={user.id} className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
                 <span className="font-bold">{user.name}</span>
                 <span className="text-xs text-slate-400">{user.protocol} • {user.status}</span>
@@ -321,7 +412,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser, users, set
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
           <h3 className="text-lg font-black mb-4">CLIENTES</h3>
           <div className="space-y-3">
-            {users.filter((user) => user.role !== UserRole.ADMIN).map((user) => (
+            {organizationScopedUsers.filter((user) => user.role !== UserRole.ADMIN).map((user) => (
               <div key={user.id} className="p-3 rounded-xl bg-slate-950 border border-slate-800">
                 <p className="font-bold">{user.name}</p>
                 <p className="text-xs text-slate-400">{user.email}</p>
@@ -466,7 +557,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser, users, set
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800">
-                    {users.filter(u => u.role === UserRole.ADMIN || u.hierarchy).map(u => (
+                    {organizationScopedUsers.filter(u => u.role === UserRole.ADMIN || u.hierarchy).map(u => (
                       <tr key={u.id} className="hover:bg-slate-800/30">
                         <td className="px-6 py-4 font-bold flex flex-col">
                            <span>{u.name}</span>
