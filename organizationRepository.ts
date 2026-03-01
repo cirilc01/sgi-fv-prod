@@ -55,6 +55,7 @@ const toOrganization = (row: Record<string, unknown>): Organization | null => {
     name: organizationName ?? `Organização ${idValue}`,
     createdAt: pickDate(row, ['created_at', 'createdAt', 'inserted_at']),
     subscriptionExpiresAt: pickDate(row, ['subscription_expires_at', 'expires_at', 'subscription_ends_at', 'expiresAt']),
+    slug: typeof row.slug === 'string' ? row.slug : undefined,
   };
 };
 
@@ -154,28 +155,48 @@ export const createOrganization = async (organizationName: string) => {
 
 export const deleteOrganization = async (organizationId: string) => {
   if (!organizationId) {
-    return { error: { message: 'ID da organização é obrigatório para excluir.' } as PostgrestErrorLike | null };
+    return {
+      error: { message: 'ID da organização é obrigatório para excluir.' } as PostgrestErrorLike | null,
+      deleted: false,
+    };
   }
 
   for (const schema of candidateSchemas) {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .schema(schema)
       .from(configuredTable)
       .delete()
-      .eq('id', organizationId);
+      .eq('id', organizationId)
+      .select('id')
+      .limit(1);
 
     if (!error) {
-      return { error: null as PostgrestErrorLike | null };
+      const deleted = Array.isArray(data) && data.length > 0;
+
+      if (!deleted) {
+        return {
+          error: {
+            code: 'NO_ROWS_DELETED',
+            message: 'A exclusão foi bloqueada por política do banco ou o registro não existe mais.',
+          } as PostgrestErrorLike,
+          deleted: false,
+        };
+      }
+
+      return { error: null as PostgrestErrorLike | null, deleted: true };
     }
 
     if (error.code === 'PGRST205') {
       continue;
     }
 
-    return { error };
+    return { error, deleted: false };
   }
 
-  return { error: { message: 'Não foi possível excluir organização no schema configurado.' } as PostgrestErrorLike };
+  return {
+    error: { message: 'Não foi possível excluir organização no schema configurado.' } as PostgrestErrorLike,
+    deleted: false,
+  };
 };
 
 export const buildOrganizationErrorMessage = (error: PostgrestErrorLike | null | undefined) => {
@@ -197,6 +218,10 @@ export const buildOrganizationErrorMessage = (error: PostgrestErrorLike | null |
 
   if (error.code === '23502') {
     return 'A tabela exige campos obrigatórios adicionais (ex.: slug). Ajuste defaults no banco ou preencha esses campos no cadastro.';
+  }
+
+  if (error.code === 'NO_ROWS_DELETED') {
+    return 'A organização não foi excluída no banco. Verifique as políticas RLS de DELETE da tabela organizations.';
   }
 
   return error.message ?? 'Erro inesperado ao processar organizações.';

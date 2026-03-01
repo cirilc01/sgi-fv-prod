@@ -55,6 +55,7 @@ export interface Organization {
   name: string;
   createdAt?: string;
   subscriptionExpiresAt?: string;
+  slug?: string;
 }
 
 export interface TimelineEntry {

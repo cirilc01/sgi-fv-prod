@@ -190,25 +190,39 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser, users, set
     setOrgSuccess('Organização cadastrada com sucesso.');
   };
 
-  const handleDeleteOrganization = async (organizationId: string) => {
+
+  const isCentralOrganization = (organization: Organization) => {
+    const normalizedSlug = organization.slug?.toLowerCase();
+    const normalizedName = organization.name.toLowerCase();
+
+    return normalizedSlug === 'default' || normalizedName === 'organização padrão';
+  };
+
+  const handleDeleteOrganization = async (organization: Organization) => {
+    if (isCentralOrganization(organization)) {
+      setOrgError('A organização central (slug default) não pode ser excluída.');
+      setOrgSuccess('');
+      return;
+    }
+
     if (!window.confirm('Deseja realmente excluir esta organização?')) {
       return;
     }
 
     setOrgError('');
     setOrgSuccess('');
-    setOrganizationDeletingId(organizationId);
+    setOrganizationDeletingId(organization.id);
 
-    const { error } = await deleteOrganization(organizationId);
+    const { error, deleted } = await deleteOrganization(organization.id);
 
     setOrganizationDeletingId(null);
 
-    if (error) {
+    if (error || !deleted) {
       setOrgError(buildOrganizationErrorMessage(error));
       return;
     }
 
-    setOrganizations((prev) => prev.filter((organization) => organization.id !== organizationId));
+    setOrganizations((prev) => prev.filter((item) => item.id !== organization.id));
     setOrgSuccess('Organização excluída com sucesso.');
   };
 
@@ -353,13 +367,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser, users, set
                       <p className="font-bold">{organization.name}</p>
                       <p className="text-xs text-slate-400">Cadastro em: {formatDateTime(organization.createdAt)}</p>
                       <p className="text-xs text-slate-500">Expiração da assinatura: {formatDateTime(organization.subscriptionExpiresAt)}</p>
+                      {isCentralOrganization(organization) && (
+                        <p className="text-[11px] text-amber-300 font-bold mt-1">Organização central protegida contra exclusão.</p>
+                      )}
                     </div>
                     <button
                       type="button"
-                      onClick={() => handleDeleteOrganization(organization.id)}
-                      disabled={organizationDeletingId === organization.id}
+                      onClick={() => handleDeleteOrganization(organization)}
+                      disabled={organizationDeletingId === organization.id || isCentralOrganization(organization)}
                       className="p-2 rounded-lg bg-red-900/30 hover:bg-red-900/50 disabled:bg-slate-800 disabled:text-slate-500 text-red-300"
-                      title="Excluir organização"
+                      title={isCentralOrganization(organization) ? 'Organização central não pode ser excluída' : 'Excluir organização'}
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
