@@ -123,6 +123,9 @@ export interface User {
 export interface Organization {
   id: string;
   name: string;
+  createdAt?: string;
+  subscriptionExpiresAt?: string;
+  slug?: string;
 }
 
 // ============================================

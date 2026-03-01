@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { ArrowLeft, CheckCircle2, ShieldCheck } from 'lucide-react';
 import { COUNTRIES } from '../constants';
 import { ServiceUnit, ProcessStatus, User, UserRole, Organization } from '../types';
@@ -18,6 +18,7 @@ interface RegisterProps {
 
 const Register: React.FC<RegisterProps> = ({ setUsers, setCurrentUser }) => {
   const goToRoute = useNavigate();
+  const location = useLocation();
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -36,13 +37,33 @@ const Register: React.FC<RegisterProps> = ({ setUsers, setCurrentUser }) => {
 
   const [error, setError] = useState('');
   const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [isOrganizationLocked, setIsOrganizationLocked] = useState(false);
+  const [organizationContextMessage, setOrganizationContextMessage] = useState('');
 
   const validatePassword = (pass: string) => {
     const hasMinLength = pass.length >= 8;
     const hasUpper = /[A-Z]/.test(pass);
-    const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(pass);
+  const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(pass);
     const hasNumber = /[0-9]/.test(pass);
     return hasMinLength && hasUpper && hasSpecial && hasNumber;
+  };
+
+  const mapAuthSignUpError = (message: string) => {
+    const normalizedMessage = message.toLowerCase();
+
+    if (normalizedMessage.includes('database error saving new user')) {
+      return 'Erro interno ao criar usuário no Auth do Supabase. Verifique no Supabase se existe trigger/policy bloqueando criação em auth.users ou profiles.';
+    }
+
+    if (normalizedMessage.includes('user already registered')) {
+      return 'Este e-mail já está cadastrado. Tente recuperar a senha ou utilizar outro e-mail.';
+    }
+
+    if (normalizedMessage.includes('invalid email')) {
+      return 'E-mail inválido. Verifique o endereço informado.';
+    }
+
+    return message;
   };
 
 
@@ -57,10 +78,32 @@ const Register: React.FC<RegisterProps> = ({ setUsers, setCurrentUser }) => {
       }
 
       setOrganizations(loadedOrganizations);
+
+      const params = new URLSearchParams(location.search);
+      const orgSlugParam = params.get('orgSlug')?.trim().toLowerCase();
+
+      if (!orgSlugParam) {
+        setIsOrganizationLocked(false);
+        setOrganizationContextMessage('');
+        return;
+      }
+
+      const matchedOrganization = loadedOrganizations.find(
+        (organization) => organization.slug?.toLowerCase() === orgSlugParam
+      );
+
+      if (!matchedOrganization) {
+        setError('Não foi possível identificar a organização da origem do formulário.');
+        return;
+      }
+
+      setFormData((prev) => ({ ...prev, organizationId: matchedOrganization.id }));
+      setIsOrganizationLocked(true);
+      setOrganizationContextMessage(`Cadastro vinculado automaticamente à organização ${matchedOrganization.name}.`);
     };
 
     fetchOrganizations();
-  }, []);
+  }, [location.search]);
 
   const handleRegister = async () => {
     setError('');
@@ -73,6 +116,16 @@ const Register: React.FC<RegisterProps> = ({ setUsers, setCurrentUser }) => {
 
     if (!isSupabaseConfigured) {
       setError('Configuração do sistema incompleta. Contate o suporte para ajustar as variáveis do Supabase.');
+      return;
+    }
+
+    if (!isSupabaseConfigured) {
+      setError('Configuração do sistema incompleta. Contate o suporte para ajustar as variáveis do Supabase.');
+      return;
+    }
+
+    if (!formData.organizationId) {
+      setError('Selecione a organização vinculada ao cliente.');
       return;
     }
 
@@ -106,7 +159,7 @@ const Register: React.FC<RegisterProps> = ({ setUsers, setCurrentUser }) => {
 
       if (authError) {
         console.error('[register] falha no cadastro', authError);
-        setError(authError.message);
+        setError(mapAuthSignUpError(authError.message));
         return;
       }
 
@@ -283,10 +336,12 @@ const Register: React.FC<RegisterProps> = ({ setUsers, setCurrentUser }) => {
 
               <div className="mb-4">
                 <label className="text-xs font-bold text-slate-400 mb-2 block">Organização</label>
+                {organizationContextMessage && <p className="text-xs text-emerald-400 font-bold mb-2">{organizationContextMessage}</p>}
                 <select
                   required
                   value={formData.organizationId}
                   onChange={e => setFormData({ ...formData, organizationId: e.target.value })}
+                  disabled={isOrganizationLocked}
                   className={inputClass}
                 >
                   <option value="">Selecione a organização</option>
